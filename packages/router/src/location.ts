@@ -29,6 +29,7 @@ interface LocationPartial {
 }
 
 const TRAILING_SLASH_RE = /\/$/
+//  移除路径末尾的斜杠，避免重复斜杠问题
 export const removeTrailingSlash = (path: string) =>
   path.replace(TRAILING_SLASH_RE, '')
 
@@ -152,8 +153,11 @@ export function stringifyURL(
  */
 export function stripBase(pathname: string, base: string): string {
   // no base or base is not found at the beginning
+  // 没有配置 base 或 pathname 不以base开头
   if (!base || !pathname.toLowerCase().startsWith(base.toLowerCase()))
-    return pathname
+    return pathname // 直接返回
+
+  // 移除 base 前缀（如 /admin/home → /home）
   return pathname.slice(base.length) || '/'
 }
 

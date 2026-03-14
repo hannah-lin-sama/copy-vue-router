@@ -184,6 +184,7 @@ import type {
 } from './typed-routes'
 
 declare module 'vue' {
+  // 扩展组件选项类型
   export interface ComponentCustomOptions {
     /**
      * Guard called when the router is navigating to the route that is rendering
@@ -191,7 +192,7 @@ declare module 'vue' {
      * and `beforeRouteLeave`, `beforeRouteEnter` does not have access to the
      * component instance through `this` because it triggers before the component
      * is even mounted.
-     *
+     * 路由进入守卫：组件挂载前触发，无 this 指向
      * @param to - RouteLocationRaw we are navigating to
      * @param from - RouteLocationRaw we are navigating from
      * @param next - function to validate, cancel or modify (by redirecting) the
@@ -205,7 +206,7 @@ declare module 'vue' {
      * Guard called whenever the route that renders this component has changed, but
      * it is reused for the new route. This allows you to guard for changes in
      * params, the query or the hash.
-     *
+     * 路由更新守卫：组件复用（参数变化）时触发，有 this 指向
      * @param to - RouteLocationRaw we are navigating to
      * @param from - RouteLocationRaw we are navigating from
      * @param next - function to validate, cancel or modify (by redirecting) the
@@ -218,7 +219,7 @@ declare module 'vue' {
     /**
      * Guard called when the router is navigating away from the current route that
      * is rendering this component.
-     *
+     * 路由离开守卫：组件卸载前触发，有 this 指向
      * @param to - RouteLocationRaw we are navigating to
      * @param from - RouteLocationRaw we are navigating from
      * @param next - function to validate, cancel or modify (by redirecting) the
@@ -229,23 +230,29 @@ declare module 'vue' {
       : NavigationGuard
   }
 
+  // 扩展组件实例属性类型
   export interface ComponentCustomProperties {
     /**
+     * 当前路由对象：只读、响应式
      * Normalized current location. See {@link RouteLocationNormalizedLoaded}.
      */
     $route: TypesConfig extends Record<'$route', infer T>
       ? T
       : RouteLocationNormalizedLoaded
     /**
+     * 路由实例：包含 push、replace 等导航方法
      * {@link Router} instance used by the application.
      */
     $router: TypesConfig extends Record<'$router', infer T> ? T : Router
   }
 
+  // 扩展全局组件类型
   export interface GlobalComponents {
+    // 路由视图组件：渲染匹配的路由组件
     RouterView: TypesConfig extends Record<'RouterView', infer T>
       ? T
       : typeof RouterView
+    // 路由链接组件：生成导航链接
     RouterLink: TypesConfig extends Record<'RouterLink', infer T>
       ? T
       : typeof RouterLink

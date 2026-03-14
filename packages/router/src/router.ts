@@ -85,16 +85,20 @@ export interface RouterOptions extends EXPERIMENTAL_RouterOptions_Base {
 
 /**
  * Router instance.
+ * 路由实例
  */
 export interface Router extends EXPERIMENTAL_Router_Base<RouteRecordNormalized> {
   /**
    * Original options object passed to create the Router
+   * 存储创建路由实例时传入的原始配置项
    */
   readonly options: RouterOptions
 
   /**
    * Add a new {@link RouteRecordRaw | route record} as the child of an existing route.
-   *
+   * 动态路由方法
+   * 重载 1：添加嵌套路由
+   * 返回值：一个「移除该动态路由的函数」，调用后可删除本次添加的路由
    * @param parentName - Parent Route Record where `route` should be appended at
    * @param route - Route Record to add
    */
@@ -107,31 +111,43 @@ export interface Router extends EXPERIMENTAL_Router_Base<RouteRecordNormalized> 
    * Add a new {@link RouteRecordRaw | route record} to the router.
    *
    * @param route - Route Record to add
+   * 重载 2：添加顶级路由
+   * 返回值：一个「移除该动态路由的函数」，调用后可删除本次添加的路由
    */
   addRoute(route: RouteRecordRaw): () => void
 
   /**
    * Remove an existing route by its name.
    *
-   * @param name - Name of the route to remove
+   * @param name - Name of the route to remove 路由名称（非空），注意只能通过名称删除，不能通过路径
+   * 根据路由名称删除已存在的路由（包括静态路由和动态添加的路由）
+   *
    */
   removeRoute(name: NonNullable<RouteRecordNameGeneric>): void
 
   /**
    * Delete all routes from the router.
+   * 清空路由表中所有路由（包括静态路由和动态添加的路由）
+   * 注意：清空后路由表为空，需重新调用 addRoute 添加路由，否则导航会失效
    */
   clearRoutes(): void
 }
 
 /**
  * Creates a Router instance that can be used by a Vue app.
- *
+ * 负责组装路由的所有核心能力（路由匹配、导航守卫、历史记录管理、滚动行为、URL 解析 / 生成等），
+ * 最终返回一个可安装到 Vue 应用的 Router 实例
  * @param options - {@link RouterOptions}
  */
 export function createRouter(options: RouterOptions): Router {
+  // 创建路由匹配器：解析 routes 配置，生成匹配规则（核心）
   const matcher = createRouterMatcher(options.routes, options)
+
+  // 初始化 URL 查询参数解析/序列化函数（默认/自定义）
   const parseQuery = options.parseQuery || originalParseQuery
   const stringifyQuery = options.stringifyQuery || originalStringifyQuery
+
+  // 初始化历史管理器（Hash/History 模式），开发环境校验必传
   const routerHistory = options.history
   if (__DEV__ && !routerHistory)
     throw new Error(
@@ -139,14 +155,18 @@ export function createRouter(options: RouterOptions): Router {
         ' https://router.vuejs.org/api/interfaces/RouterOptions.html#history'
     )
 
+  // 初始化导航守卫队列（全局前置/解析后/后置守卫）
   const beforeGuards = useCallbacks<NavigationGuardWithThis<undefined>>()
   const beforeResolveGuards = useCallbacks<NavigationGuardWithThis<undefined>>()
   const afterGuards = useCallbacks<NavigationHookAfter>()
+
+  // 初始化当前路由（响应式）和待处理路由
   const currentRoute = shallowRef<RouteLocationNormalizedLoaded>(
     START_LOCATION_NORMALIZED
   )
   let pendingLocation: RouteLocation = START_LOCATION_NORMALIZED
 
+  // 滚动行为初始化：有自定义 scrollBehavior 时，禁用浏览器默认滚动恢复
   // leave the scrollRestoration if no scrollBehavior is provided
   if (isBrowser && options.scrollBehavior && 'scrollRestoration' in history) {
     history.scrollRestoration = 'manual'
@@ -161,6 +181,12 @@ export function createRouter(options: RouterOptions): Router {
     // @ts-expect-error: intentionally avoid the type check
     applyToParams.bind(null, decode)
 
+  /**
+   * 新增路由（支持嵌套）
+   * @param parentOrRoute 父路由记录名或路由记录对象
+   * @param route 子路由记录（可选）
+   * @returns 移除路由的函数
+   */
   function addRoute(
     parentOrRoute: NonNullable<RouteRecordNameGeneric> | RouteRecordRaw,
     route?: RouteRecordRaw
@@ -183,6 +209,10 @@ export function createRouter(options: RouterOptions): Router {
     return matcher.addRoute(record, parent)
   }
 
+  /**
+   * 删除路由（根据路由记录名）
+   * @param name 路由记录名
+   */
   function removeRoute(name: NonNullable<RouteRecordNameGeneric>) {
     const recordMatcher = matcher.getRecordMatcher(name)
     if (recordMatcher) {
@@ -192,14 +222,29 @@ export function createRouter(options: RouterOptions): Router {
     }
   }
 
+  /**
+   * 获取所有路由记录
+   * @returns
+   */
   function getRoutes() {
     return matcher.getRoutes().map(routeMatcher => routeMatcher.record)
   }
 
+  /**
+   * 判断路由是否存在
+   * @param name
+   * @returns
+   */
   function hasRoute(name: NonNullable<RouteRecordNameGeneric>): boolean {
     return !!matcher.getRecordMatcher(name)
   }
 
+  /**
+   * 路由地址解析器
+   * @param rawLocation
+   * @param currentLocation
+   * @returns
+   */
   function resolve(
     rawLocation: RouteLocationRaw,
     currentLocation?: RouteLocationNormalizedLoaded
@@ -578,6 +623,12 @@ export function createRouter(options: RouterOptions): Router {
 
   // TODO: refactor the whole before guards by internally using router.beforeEach
 
+  /**
+   * 守卫执行
+   * @param to 目标路由
+   * @param from 当前路由
+   * @returns
+   */
   function navigate(
     to: RouteLocationNormalized,
     from: RouteLocationNormalizedLoaded
@@ -716,6 +767,15 @@ export function createRouter(options: RouterOptions): Router {
    * - Changes the url if necessary
    * - Calls the scrollBehavior
    */
+  /**
+   * 导航最终化
+   * @param toLocation 目标路由
+   * @param from 当前路由
+   * @param isPush 是否为 push 导航
+   * @param replace 是否为 replace 导航
+   * @param data 导航状态数据
+   * @returns
+   */
   function finalizeNavigation(
     toLocation: RouteLocationNormalizedLoaded,
     from: RouteLocationNormalizedLoaded,
@@ -758,6 +818,10 @@ export function createRouter(options: RouterOptions): Router {
 
   let removeHistoryListener: undefined | null | (() => void)
   // attach listener to history to trigger navigations
+  /**
+   * 历史记录监听
+   * @returns
+   */
   function setupListeners() {
     // avoid setting up listeners twice due to an invalid first navigation
     if (removeHistoryListener) return
@@ -987,7 +1051,7 @@ export function createRouter(options: RouterOptions): Router {
   // to add them later on instead of having declare module in experimental
   const router = {
     currentRoute,
-    listening: true,
+    listening: true, // 监听路由
 
     addRoute,
     removeRoute,
@@ -1010,10 +1074,16 @@ export function createRouter(options: RouterOptions): Router {
     onError: errorListeners.add,
     isReady,
 
+    /**
+     * Vue 应用集成（install 方法）
+     * @param app
+     */
     install(app: App) {
+      // 注册全局组件 RouterLink 和 RouterView
       app.component('RouterLink', RouterLink)
       app.component('RouterView', RouterView)
 
+      // 暴露 $router/$route 到全局
       app.config.globalProperties.$router = router as Router
       Object.defineProperty(app.config.globalProperties, '$route', {
         enumerable: true,
@@ -1023,6 +1093,7 @@ export function createRouter(options: RouterOptions): Router {
       // this initial navigation is only necessary on client, on server it doesn't
       // make sense because it will create an extra unnecessary navigation and could
       // lead to problems
+      // 初始化首次导航（客户端）
       if (
         isBrowser &&
         // used for the initial navigation client side to avoid pushing
@@ -1045,12 +1116,15 @@ export function createRouter(options: RouterOptions): Router {
         })
       }
 
+      // 提供路由注入（useRouter/useRoute）
       app.provide(routerKey, router as Router)
       app.provide(routeLocationKey, shallowReactive(reactiveRoute))
       app.provide(routerViewLocationKey, currentRoute)
 
       const unmountApp = app.unmount
       installedApps.add(app)
+
+      // 应用卸载时清理
       app.unmount = function () {
         installedApps.delete(app)
         // the router is not attached to an app anymore

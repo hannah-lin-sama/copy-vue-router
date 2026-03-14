@@ -180,6 +180,10 @@ export interface _RouteLocationBase extends Pick<
 export type RouteComponent = Component | DefineComponent
 /**
  * Allowed Component definitions in route records provided by the user
+ * RawRouteComponent 兼容多种组件形式：
+    1、直接导入的组件：import Home from './Home.vue'；
+    2、异步组件：() => import('./Home.vue')；
+    3、异步组件带加载状态：defineAsyncComponent({ loader: () => import('./Home.vue') })；
  */
 export type RawRouteComponent = RouteComponent | Lazy<RouteComponent>
 
@@ -191,7 +195,7 @@ export interface _RouteRecordBase extends PathParserOptions {
   /**
    * Path of the record. Should start with `/` unless the record is the child of
    * another record.
-   *
+   * 路由路径
    * @example `/users/:id` matches `/users/1` as well as `/users/posva`.
    */
   path: string
@@ -263,14 +267,19 @@ export interface RouteMeta extends Record<PropertyKey, unknown> {}
 export interface RouteRecordSingleView extends _RouteRecordBase {
   /**
    * Component to display when the URL matches this route.
+   * 指定路由匹配时要渲染的单个组件，是单视图路由的核心标识
    */
   component: RawRouteComponent
+  // 明确禁止在单视图路由中使用 components 字段（多视图路由的核心字段）
   components?: never
+  // 明确禁止在单视图路由中使用 children 字段（嵌套路由的核心字段）
   children?: never
+  // 明确禁止在单视图路由中使用 redirect 字段（重定向路由的核心字段）
   redirect?: never
 
   /**
    * Allow passing down params as props to the component rendered by `router-view`.
+   * 控制是否将路由参数（params/query）作为 props 传递给路由组件，避免组件直接依赖 $route
    */
   props?: _RouteRecordProps
 }
@@ -283,14 +292,18 @@ export interface RouteRecordSingleView extends _RouteRecordBase {
 export interface RouteRecordSingleViewWithChildren extends _RouteRecordBase {
   /**
    * Component to display when the URL matches this route.
+   * 指定父路由匹配时渲染的布局组件（需包含 <RouterView> 用于渲染子路由）
    */
   component?: RawRouteComponent | null | undefined
+  // 与 RouteRecordSingleView 一致，禁止使用 components（多视图字段），保证父路由为「单视图布局」
   components?: never
 
+  // 定义父路由下的嵌套子路由，是该接口的核心标识（区别于 RouteRecordSingleView）
   children: RouteRecordRaw[]
 
   /**
    * Allow passing down params as props to the component rendered by `router-view`.
+   * 控制是否将父路由的参数传递给父布局组件（而非子路由组件）
    */
   props?: _RouteRecordProps
 }
@@ -301,16 +314,25 @@ export interface RouteRecordSingleViewWithChildren extends _RouteRecordBase {
 export interface RouteRecordMultipleViews extends _RouteRecordBase {
   /**
    * Components to display when the URL matches this route. Allow using named views.
+   * 指定路由匹配时要渲染的多个命名组件，键为「视图名称」，值为「组件」，是多视图路由的核心标识
+   * 示例  components: {
+            default: () => import('./DashboardMain.vue'), // 对应 <RouterView>（默认视图）
+            header: () => import('./DashboardHeader.vue'), // 对应 <RouterView name="header">
+            sidebar: () => import('./DashboardSidebar.vue'), // 对应 <RouterView name="sidebar">
+          },
    */
   components: Record<string, RawRouteComponent>
-  component?: never
+  component?: never // 明确禁止使用 component 字段（单视图路由的核心字段）
+  // 禁止使用 children 字段，多视图 + 嵌套子路由需使用 RouteRecordMultipleViewsWithChildren 类型
   children?: never
+  // 禁止使用 redirect 字段，重定向路由需使用 RouteRecordRedirect 类型
   redirect?: never
 
   /**
    * Allow passing down params as props to the component rendered by
    * `router-view`. Should be an object with the same keys as `components` or a
    * boolean to be applied to every component.
+   * 控制是否将路由参数传递给每个命名视图组件，是单视图 props 字段的多视图扩展
    */
   props?: Record<string, _RouteRecordProps> | boolean
 }
@@ -321,16 +343,22 @@ export interface RouteRecordMultipleViews extends _RouteRecordBase {
 export interface RouteRecordMultipleViewsWithChildren extends _RouteRecordBase {
   /**
    * Components to display when the URL matches this route. Allow using named views.
+   * 指定父路由匹配时渲染的多命名视图布局组件（需包含多个 <RouterView name="xxx"> 用于渲染子路由）；
+   * 1、有布局组件：父路由渲染多视图布局（如 header + sidebar + main），子路由可覆盖 / 扩展父视图；
+   * 2、无布局组件：父路由仅用于路径分组（如 /admin/* 下的多视图子路由，无可视化布局）；
    */
   components?: Record<string, RawRouteComponent> | null | undefined
+  // 与 RouteRecordMultipleViews 一致，禁止使用 component 字段（单视图路由的核心字段）
   component?: never
 
+  // 定义父多视图路由下的嵌套子路由，是该接口的核心标识（区别于 RouteRecordMultipleViews）
   children: RouteRecordRaw[]
 
   /**
    * Allow passing down params as props to the component rendered by
    * `router-view`. Should be an object with the same keys as `components` or a
    * boolean to be applied to every component.
+   * 控制是否将父路由的参数传递给父多视图组件（而非子路由组件）
    */
   props?: Record<string, _RouteRecordProps> | boolean
 }
@@ -340,17 +368,26 @@ export interface RouteRecordMultipleViewsWithChildren extends _RouteRecordBase {
  * as it is never rendered.
  */
 export interface RouteRecordRedirect extends _RouteRecordBase {
+  // 指定当前路径匹配后要跳转到的目标路由，是重定向路由的唯一核心标识；
   redirect: RouteRecordRedirectOption
+  // 明确禁止使用 component 字段（单视图路由的核心字段）；
   component?: never
+  // 禁止使用 components 字段（多视图路由的核心字段）
   components?: never
+  // 禁止使用 props 字段（组件参数传递配置）
+  // props 仅用于「组件接收路由参数」，而重定向路由无组件渲染，传参配置无意义
   props?: never
 }
 
 export type RouteRecordRaw =
-  | RouteRecordSingleView
+  | RouteRecordSingleView // 最基础的路由配置，对应「一个路径匹配一个组件」的场景,无嵌套子路由
+  // 基础单视图路由 + 嵌套子路由（对应 <RouterView> 嵌套渲染）
   | RouteRecordSingleViewWithChildren
+  // 一个路径匹配多个组件，对应 <RouterView name="xxx"> 命名视图
   | RouteRecordMultipleViews
+  // 多视图路由 + 嵌套子路由，是 RouteRecordMultipleViews 的扩展
   | RouteRecordMultipleViewsWithChildren
+  // 仅用于路由重定向，无组件 / 视图配置，匹配路径后跳转到目标路由
   | RouteRecordRedirect
 
 // make matched non-enumerable for easy printing

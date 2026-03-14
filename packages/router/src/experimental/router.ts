@@ -119,7 +119,7 @@ export interface EXPERIMENTAL_RouterOptions_Base extends PathParserOptions {
    * })
    * ```
    */
-  history: RouterHistory
+  history: RouterHistory // 指定路由使用的「历史记录管理器」，决定路由模式（Hash/History）
 
   /**
    * Function to control scrolling when navigating between pages. Can return a
@@ -135,7 +135,7 @@ export interface EXPERIMENTAL_RouterOptions_Base extends PathParserOptions {
    * }
    * ```
    */
-  scrollBehavior?: RouterScrollBehavior
+  scrollBehavior?: RouterScrollBehavior // 自定义路由切换时的页面滚动行为（如返回顶部、恢复滚动位置）
 
   /**
    * Custom implementation to parse a query. See its counterpart,
@@ -154,11 +154,12 @@ export interface EXPERIMENTAL_RouterOptions_Base extends PathParserOptions {
    * })
    * ```
    */
-  parseQuery?: typeof originalParseQuery
+  parseQuery?: typeof originalParseQuery // 将 URL 中的查询参数字符串（如 a=1&b=2）解析为对象（{ a: '1', b: '2' }）
 
   /**
    * Custom implementation to stringify a query object. Should not prepend a leading `?`.
    * {@link parseQuery} counterpart to handle query parsing.
+   * 将查询参数对象（{ a: '1', b: '2' }）序列化为字符串（a=1&b=2），无需手动加 ?
    */
 
   stringifyQuery?: typeof originalStringifyQuery
@@ -166,18 +167,21 @@ export interface EXPERIMENTAL_RouterOptions_Base extends PathParserOptions {
   /**
    * Default class applied to active {@link RouterLink}. If none is provided,
    * `router-link-active` will be applied.
+   * 设置 <RouterLink> 「部分匹配激活」时的默认类名（如 /home 匹配 /home/child）
    */
   linkActiveClass?: string
 
   /**
    * Default class applied to exact active {@link RouterLink}. If none is provided,
    * `router-link-exact-active` will be applied.
+   * 设置 <RouterLink> 「精确匹配激活」时的默认类名（仅 /home 匹配 /home）
    */
   linkExactActiveClass?: string
 
   /**
    * Default class applied to non-active {@link RouterLink}. If none is provided,
    * `router-link-inactive` will be applied.
+   * 预留配置，用于设置 <RouterLink> 「非激活状态」的默认类名，当前版本未启用
    */
   // linkInactiveClass?: string
 }
@@ -424,24 +428,27 @@ export interface EXPERIMENTAL_Router_Base<TRecord> {
   // <TRouteRecordRaw, TRouteRecord>
   /**
    * Current {@link RouteLocationNormalized}
+   * 存储当前激活的标准化路由信息（响应式）
    */
   readonly currentRoute: ShallowRef<RouteLocationNormalizedLoaded>
 
   /**
    * Allows turning off the listening of history events. This is a low level api for micro-frontend.
+   * 控制是否监听浏览器历史事件，专为「微前端」场景设计
    */
   listening: boolean
 
   // TODO: deprecate in favor of getRoute(name) and add it
   /**
    * Checks if a route with a given name exists
-   *
+   * 根据路由名称判断路由是否存在（静态 / 动态添加的路由均可检测）
    * @param name - Name of the route to check
    */
   hasRoute(name: NonNullable<RouteRecordNameGeneric>): boolean
 
   /**
    * Get a full list of all the {@link RouteRecord | route records}.
+   * 返回路由表中所有标准化路由记录
    */
   getRoutes(): TRecord[]
 
@@ -450,7 +457,7 @@ export interface EXPERIMENTAL_Router_Base<TRecord> {
    * {@link RouteLocationRaw | route location}. Also includes an `href` property
    * that includes any existing `base`. By default, the `currentLocation` used is
    * `router.currentRoute` and should only be overridden in advanced use cases.
-   *
+   * 将原始路由地址（如字符串、对象）解析为标准化的路由对象（包含 href、fullPath 等）
    * @param to - Raw route location to resolve
    * @param currentLocation - Optional current location to resolve against
    */
@@ -469,6 +476,7 @@ export interface EXPERIMENTAL_Router_Base<TRecord> {
   /**
    * Programmatically navigate to a new URL by pushing an entry in the history
    * stack.
+   * 通过「新增历史记录」实现无刷新导
    *
    * @param to - Route location to navigate to
    */
@@ -477,6 +485,7 @@ export interface EXPERIMENTAL_Router_Base<TRecord> {
   /**
    * Programmatically navigate to a new URL by replacing the current entry in
    * the history stack.
+   * 通过「替换当前历史记录」实现导航（对应 history.replaceState），无历史记录回溯
    *
    * @param to - Route location to navigate to
    */
@@ -485,12 +494,14 @@ export interface EXPERIMENTAL_Router_Base<TRecord> {
   /**
    * Go back in history if possible by calling `history.back()`. Equivalent to
    * `router.go(-1)`.
+   * 历史记录回溯
    */
   back(): void
 
   /**
    * Go forward in history if possible by calling `history.forward()`.
    * Equivalent to `router.go(1)`.
+   * 历史记录回溯
    */
   forward(): void
 
@@ -500,6 +511,7 @@ export interface EXPERIMENTAL_Router_Base<TRecord> {
    *
    * @param delta - The position in the history to which you want to move,
    * relative to the current page
+   * 历史记录回溯
    */
   go(delta: number): void
 
@@ -507,6 +519,7 @@ export interface EXPERIMENTAL_Router_Base<TRecord> {
    * Add a navigation guard that executes before any navigation. Returns a
    * function that removes the registered guard.
    *
+   * 注册全局前置守卫，导航触发时最先执行（可拦截、重定向导航）
    * @param guard - navigation guard to add
    */
   beforeEach(guard: NavigationGuardWithThis<undefined>): () => void
@@ -519,7 +532,7 @@ export interface EXPERIMENTAL_Router_Base<TRecord> {
    *
    * @param guard - navigation guard to add
    * @returns a function that removes the registered guard
-   *
+   * 在所有组件内守卫、异步路由组件解析完成后，导航确认前执行
    * @example
    * ```js
    * router.beforeResolve(to => {
@@ -533,6 +546,8 @@ export interface EXPERIMENTAL_Router_Base<TRecord> {
   /**
    * Add a navigation hook that is executed after every navigation. Returns a
    * function that removes the registered hook.
+   *
+   * 导航完成后（成功 / 失败均执行），无法拦截导航
    *
    * @param guard - navigation hook to add
    * @returns a function that removes the registered hook
@@ -554,6 +569,7 @@ export interface EXPERIMENTAL_Router_Base<TRecord> {
    * asynchronously, errors returned or passed to `next` in any navigation
    * guard, and errors occurred when trying to resolve an async component that
    * is required to render a route.
+   * 注册导航错误监听器，捕获导航过程中的所有未处理错误
    *
    * @param handler - error handler to register
    */
@@ -570,12 +586,13 @@ export interface EXPERIMENTAL_Router_Base<TRecord> {
    * push the initial location while on client side, the router automatically
    * picks it up from the URL.
    */
-  isReady(): Promise<void>
+  isReady(): Promise<void> // 等待初始导航完成
 
   /**
    * Called automatically by `app.use(router)`. Should not be called manually by
    * the user. This will trigger the initial navigation when on client side.
-   *
+   * 安装路由到 Vue 应用
+   * 由 app.use(router) 自动调用，完成路由的初始化（注册全局组件、注入路由实例、触发初始导航）
    * @internal
    * @param app - Application that uses the router
    */

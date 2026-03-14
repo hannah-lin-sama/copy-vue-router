@@ -16,19 +16,20 @@ import { ComponentPublicInstance } from 'vue'
 export type NavigationGuardReturn = void | Error | boolean | RouteLocationRaw
 
 /**
+ * 路由守卫函数
  * Navigation Guard with a type parameter for `this`.
  * @see {@link TypesConfig}
  */
 export interface NavigationGuardWithThis<T> {
   (
     this: T,
-    to: RouteLocationNormalized,
-    from: RouteLocationNormalizedLoaded,
+    to: RouteLocationNormalized, // 目标路由对象
+    from: RouteLocationNormalizedLoaded, // 来源路由对象
     /**
      * @deprecated Return a value from the guard instead of calling `next(value)`.
      * The callback will be removed in a future version of Vue Router.
      */
-    next: NavigationGuardNext
+    next: NavigationGuardNext // 导航守卫回调函数
   ): _Awaitable<NavigationGuardReturn>
 }
 

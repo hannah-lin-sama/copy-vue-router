@@ -204,6 +204,7 @@ export interface _RouteRecordBase extends PathParserOptions {
    * Where to redirect if the route is directly matched. The redirection happens
    * before any navigation guard and triggers a new navigation with the new
    * target location.
+   * 路由重定向选项，用于定义路由跳转目标
    */
   redirect?: RouteRecordRedirectOption
 
@@ -211,11 +212,13 @@ export interface _RouteRecordBase extends PathParserOptions {
    * Aliases for the record. Allows defining extra paths that will behave like a
    * copy of the record. Allows having paths shorthands like `/users/:id` and
    * `/u/:id`. All `alias` and `path` values must share the same params.
+   * 路由别名数组，用于定义额外的路径
    */
   alias?: string | string[]
 
   /**
    * Name for the route record. Must be unique.
+   * 路由名称，必须唯一
    */
   name?: RouteRecordNameGeneric
 
@@ -229,11 +232,13 @@ export interface _RouteRecordBase extends PathParserOptions {
 
   /**
    * Arbitrary data attached to the record.
+   * 路由元数据，用于存储自定义信息，如权限、标题等
    */
   meta?: RouteMeta
 
   /**
    * Array of nested routes.
+   * 子路由数组，用于定义嵌套路由结构
    */
   children?: RouteRecordRaw[]
 

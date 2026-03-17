@@ -149,6 +149,7 @@ export function createRouter(options: RouterOptions): Router {
 
   // 初始化历史管理器（Hash/History 模式），开发环境校验必传
   const routerHistory = options.history
+
   if (__DEV__ && !routerHistory)
     throw new Error(
       'Provide the "history" option when calling "createRouter()":' +
@@ -164,6 +165,7 @@ export function createRouter(options: RouterOptions): Router {
   const currentRoute = shallowRef<RouteLocationNormalizedLoaded>(
     START_LOCATION_NORMALIZED
   )
+  // 待处理路由（当前导航目标），初始值为起始路由
   let pendingLocation: RouteLocation = START_LOCATION_NORMALIZED
 
   // 滚动行为初始化：有自定义 scrollBehavior 时，禁用浏览器默认滚动恢复
@@ -176,6 +178,7 @@ export function createRouter(options: RouterOptions): Router {
     null,
     paramValue => '' + paramValue
   )
+  // 遍历路由参数对象的所有值，对每个值应用指定的处理函数，并返回新的参数对象
   const encodeParams = applyToParams.bind(null, encodeParam)
   const decodeParams: (params: RouteParams | undefined) => RouteParams =
     // @ts-expect-error: intentionally avoid the type check
@@ -183,6 +186,8 @@ export function createRouter(options: RouterOptions): Router {
 
   /**
    * 新增路由（支持嵌套）
+   * 格式 1：addRoute(父路由名称, 子路由配置)
+   * 格式 2：addRoute(路由配置)
    * @param parentOrRoute 父路由记录名或路由记录对象
    * @param route 子路由记录（可选）
    * @returns 移除路由的函数
@@ -193,7 +198,10 @@ export function createRouter(options: RouterOptions): Router {
   ) {
     let parent: Parameters<(typeof matcher)['addRoute']>[1] | undefined
     let record: RouteRecordRaw
+
+    // 判断第一个参数是否为「路由名称」（而非路由配置对象）
     if (isRouteName(parentOrRoute)) {
+      // 根据路由名称从底层匹配器中获取对应的「路由记录匹配器」
       parent = matcher.getRecordMatcher(parentOrRoute)
       if (__DEV__ && !parent) {
         warn(
@@ -241,9 +249,9 @@ export function createRouter(options: RouterOptions): Router {
 
   /**
    * 路由地址解析器
-   * @param rawLocation
-   * @param currentLocation
-   * @returns
+   * @param rawLocation 原始路由地址（字符串或对象）
+   * @param currentLocation 当前路由状态（可选）
+   * @returns 解析后的路由地址对象
    */
   function resolve(
     rawLocation: RouteLocationRaw,
@@ -253,6 +261,8 @@ export function createRouter(options: RouterOptions): Router {
     // const objectLocation = routerLocationAsObject(rawLocation)
     // we create a copy to modify it later
     currentLocation = assign({}, currentLocation || currentRoute.value)
+
+    // 解析字符串路由地址（包含 query/hash）
     if (typeof rawLocation === 'string') {
       const locationNormalized = parseURL(
         parseQuery,
@@ -284,6 +294,7 @@ export function createRouter(options: RouterOptions): Router {
       })
     }
 
+    // 校验 rawLocation 是否为合法的路由对象（包含 path/name 至少其一）
     if (__DEV__ && !isRouteLocation(rawLocation)) {
       warn(
         `router.resolve() was passed an invalid location. This will fail in production.\n- Location:`,
@@ -295,7 +306,11 @@ export function createRouter(options: RouterOptions): Router {
     let matcherLocation: MatcherLocationRaw
 
     // path could be relative in object as well
+    // 解析对象路由地址（包含 path/params/query/hash）
+    // 含 path 的对象路由
     if (rawLocation.path != null) {
+      // 开发环境警告：path 与 params 混用（params 会被忽略）
+      // path 与 params 不兼容：通过 path 跳转时，params 会被忽略（因 path 已包含参数，如 /user/1）
       if (
         __DEV__ &&
         'params' in rawLocation &&
@@ -310,10 +325,13 @@ export function createRouter(options: RouterOptions): Router {
       matcherLocation = assign({}, rawLocation, {
         path: parseURL(parseQuery, rawLocation.path, currentLocation.path).path,
       })
+
+      // 解析命名路由地址（包含 name/params）
     } else {
       // remove any nullish param
       const targetParams = assign({}, rawLocation.params)
       for (const key in targetParams) {
+        // 移除 null/undefined 的 params（避免匹配错误）
         if (targetParams[key] == null) {
           delete targetParams[key]
         }
@@ -330,6 +348,7 @@ export function createRouter(options: RouterOptions): Router {
     const matchedRoute = matcher.resolve(matcherLocation, currentLocation)
     const hash = rawLocation.hash || ''
 
+    // 开发环境警告：hash 未以 # 开头
     if (__DEV__ && hash && !hash.startsWith('#')) {
       warn(
         `A \`hash\` should always start with the character "#". Replace "${hash}" with "#${hash}".`
@@ -340,6 +359,7 @@ export function createRouter(options: RouterOptions): Router {
     // we need to run the decoding again
     matchedRoute.params = normalizeParams(decodeParams(matchedRoute.params))
 
+    // 生成 fullPath（合并 path/query/hash）
     const fullPath = stringifyURL(
       stringifyQuery,
       assign({}, rawLocation, {
@@ -399,7 +419,9 @@ export function createRouter(options: RouterOptions): Router {
     to: RouteLocationNormalized,
     from: RouteLocationNormalized
   ): NavigationFailure | void {
+    // 全局挂起的路由 ≠ 当前待完成的路由
     if (pendingLocation !== to) {
+      // 创建并返回「导航取消」类型的失败错误
       return createRouterError<NavigationFailure>(
         ErrorTypes.NAVIGATION_CANCELLED,
         {
@@ -418,24 +440,38 @@ export function createRouter(options: RouterOptions): Router {
     return push(assign(locationAsObject(to), { replace: true }))
   }
 
+  /**
+   * 「解析目标路由匹配记录中最后一条的 redirect 配置
+   *  →标准化重定向目标格式→校验重定向合法性→合并原路由的 query/hash 等参数→返回最终的重定向目标」
+   * @param to 目标路由对象
+   * @param from 来源路由对象
+   * @returns
+   */
   function handleRedirectRecord(
     to: RouteLocation,
     from: RouteLocationNormalizedLoaded
   ): RouteLocationRaw | void {
-    const lastMatched = to.matched[to.matched.length - 1]
+    const lastMatched = to.matched[to.matched.length - 1] // 获取最后一条匹配记录
+
     if (lastMatched && lastMatched.redirect) {
-      const { redirect } = lastMatched
+      const { redirect } = lastMatched // 获取 redirect 配置
+
+      // 解析 redirect，目标重定向位置
       let newTargetLocation =
         typeof redirect === 'function' ? redirect(to, from) : redirect
 
+      // 标准化字符串格式的 redirect → 对象格式
       if (typeof newTargetLocation === 'string') {
         newTargetLocation =
+          // 字符串含 ?/# → 解析为完整对象（包含 query/hash）
           newTargetLocation.includes('?') || newTargetLocation.includes('#')
             ? (newTargetLocation = locationAsObject(newTargetLocation))
             : // force empty params
               { path: newTargetLocation }
+
         // @ts-expect-error: force empty params when a string is passed to let
         // the router parse them again
+        // 强制清空 params，避免原路由 params 污染重定向目标
         newTargetLocation.params = {}
       }
 
@@ -458,9 +494,10 @@ export function createRouter(options: RouterOptions): Router {
 
       return assign(
         {
-          query: to.query,
-          hash: to.hash,
+          query: to.query, // 继承原路由的 query 参数
+          hash: to.hash, // 继承原路由的 hash 锚点
           // avoid transferring params if the redirect has a path
+          // 重定向目标有 path → 清空 params；无 path（用 name 跳转）→ 继承原 params
           params: newTargetLocation.path != null ? {} : to.params,
         },
         newTargetLocation
@@ -468,21 +505,35 @@ export function createRouter(options: RouterOptions): Router {
     }
   }
 
+  /**
+   * 负责处理「路由跳转 + 重定向 + 守卫执行 + 历史记录更新 + 错误处理」的全流程
+   * @param to 目标路由位置（可以是字符串路径、命名路由对象或路径对象）
+   * @param redirectedFrom 重定向来源路由位置（可选）
+   * @returns 导航失败原因、成功时无返回值或 undefined
+   */
   function pushWithRedirect(
     to: RouteLocationRaw | RouteLocation,
     redirectedFrom?: RouteLocation
   ): Promise<NavigationFailure | void | undefined> {
+    // 解析目标路由为标准化 RouteLocation 对象
     const targetLocation: RouteLocation = (pendingLocation = resolve(to))
-    const from = currentRoute.value
+    const from = currentRoute.value // 获取当前路由（响应式的 currentRoute）
+
+    // 获取历史记录状态（state）
     const data: HistoryState | undefined = (to as RouteLocationOptions).state
+    // 获取强制跳转标志（force）
     const force: boolean | undefined = (to as RouteLocationOptions).force
     // to could be a string where `replace` is a function
+    // 获取替换标志（replace）
     const replace = (to as RouteLocationOptions).replace === true
 
+    // 检查目标路由是否配置了 redirect，返回重定向后的路由
     const shouldRedirect = handleRedirectRecord(targetLocation, from)
 
+    // 若存在重定向，递归调用 pushWithRedirect 处理重定向后的路由
     if (shouldRedirect)
       return pushWithRedirect(
+        // 合并重定向路由与原配置
         assign(locationAsObject(shouldRedirect), {
           state:
             typeof shouldRedirect === 'object'
@@ -496,11 +547,13 @@ export function createRouter(options: RouterOptions): Router {
       )
 
     // if it was a redirect we already called `pushWithRedirect` above
-    const toLocation = targetLocation as RouteLocationNormalized
+    const toLocation = targetLocation as RouteLocationNormalized // 标准化目标路由
 
-    toLocation.redirectedFrom = redirectedFrom
-    let failure: NavigationFailure | void | undefined
+    toLocation.redirectedFrom = redirectedFrom // 标记重定向来源
 
+    let failure: NavigationFailure | void | undefined // 声明导航失败变量
+
+    // 非强制跳转 + 路由完全相同 → 生成重复跳转错误
     if (!force && isSameRouteLocation(stringifyQuery, from, targetLocation)) {
       failure = createRouterError<NavigationFailure>(
         ErrorTypes.NAVIGATION_DUPLICATED,
@@ -510,26 +563,31 @@ export function createRouter(options: RouterOptions): Router {
         }
       )
       // trigger scroll to allow scrolling to the same anchor
+      // 即使重复跳转，仍处理滚动（如锚点 #top）
       handleScroll(
         from,
         from,
         // this is a push, the only way for it to be triggered from a
         // history.listen is with a redirect, which makes it become a push
-        true,
+        true, // push导航
         // This cannot be the first navigation because the initial location
         // cannot be manually navigated to
-        false
+        false // 非首次导航，初始路由不能手动跳转
       )
     }
 
+    // 有失败则返回 resolved 的 failure，否则调用 navigate 执行真正的导航
     return (failure ? Promise.resolve(failure) : navigate(toLocation, from))
       .catch((error: NavigationFailure | NavigationRedirectError) =>
         isNavigationFailure(error)
           ? // navigation redirects still mark the router as ready
+            // 导航守卫重定向 → 仅返回错误，不标记 ready
             isNavigationFailure(error, ErrorTypes.NAVIGATION_GUARD_REDIRECT)
             ? error
-            : markAsReady(error) // also returns the error
+            : // 其他导航失败 → 标记 router 为 ready 并返回错误
+              markAsReady(error) // also returns the error
           : // reject any unknown error
+            // 未知错误 → 触发全局错误并抛出
             triggerError(error, toLocation, from)
       )
       .then((failure: NavigationFailure | NavigationRedirectError | void) => {
@@ -540,6 +598,7 @@ export function createRouter(options: RouterOptions): Router {
             if (
               __DEV__ &&
               // we are redirecting to the same location we were already at
+              // 开发环境：检测无限重定向（超过30次）并报警
               isSameRouteLocation(
                 stringifyQuery,
                 resolve(failure.to),
@@ -583,6 +642,7 @@ export function createRouter(options: RouterOptions): Router {
           }
         } else {
           // if we fail we don't finalize the navigation
+          // 导航成功 → 最终化导航（更新历史记录/滚动/路由状态）
           failure = finalizeNavigation(
             toLocation as RouteLocationNormalizedLoaded,
             from,
@@ -591,6 +651,7 @@ export function createRouter(options: RouterOptions): Router {
             data
           )
         }
+        // 触发 afterEach 后置钩子
         triggerAfterEach(
           toLocation as RouteLocationNormalizedLoaded,
           from,
@@ -614,8 +675,10 @@ export function createRouter(options: RouterOptions): Router {
   }
 
   function runWithContext<T>(fn: () => T): T {
+    //  获取已安装的第一个 Vue 应用实例
     const app: App | undefined = installedApps.values().next().value
     // support Vue < 3.3
+    // 兼容逻辑：优先用 Vue 3.3+ 的 app.runWithContext，否则直接执行函数
     return app && typeof app.runWithContext === 'function'
       ? app.runWithContext(fn)
       : fn()
@@ -633,21 +696,25 @@ export function createRouter(options: RouterOptions): Router {
     to: RouteLocationNormalized,
     from: RouteLocationNormalizedLoaded
   ): Promise<any> {
+    // 声明守卫队列变量
     let guards: Lazy<any>[]
 
+    // 拆解路由记录（离开/更新/进入）
     const [leavingRecords, updatingRecords, enteringRecords] =
       extractChangingRecords(to, from)
 
     // all components here have been resolved once because we are leaving
+    // 提取组件离开守卫（beforeRouteLeave）
     guards = extractComponentsGuards(
-      leavingRecords.reverse(),
-      'beforeRouteLeave',
+      leavingRecords.reverse(), // 反转：子组件守卫先执行，父组件后执行
+      'beforeRouteLeave', // 组件离开守卫
       to,
       from
     )
 
     // leavingRecords is already reversed
     for (const record of leavingRecords) {
+      // leaveGuards 是提前缓存的（在组件挂载 / 路由匹配时注册）
       record.leaveGuards.forEach(guard => {
         guards.push(guardToPromiseFn(guard, to, from))
       })
@@ -659,9 +726,16 @@ export function createRouter(options: RouterOptions): Router {
       from
     )
 
+    // 将校验函数加入守卫列表
     guards.push(canceledNavigationCheck)
 
     // run the queue of per route beforeRouteLeave guards
+    //    离开守卫（beforeRouteLeave）
+    //  → 全局前置（beforeEach）
+    //  → 更新守卫（beforeRouteUpdate）
+    //  → 路由进入（beforeEnter）
+    //  → 组件进入（beforeRouteEnter）
+    //  → 全局解析前（beforeResolve）
     return (
       runGuardQueue(guards)
         .then(() => {
@@ -670,12 +744,13 @@ export function createRouter(options: RouterOptions): Router {
           for (const guard of beforeGuards.list()) {
             guards.push(guardToPromiseFn(guard, to, from))
           }
+          // 插入并发导航校验（每轮守卫前必加）
           guards.push(canceledNavigationCheck)
-
           return runGuardQueue(guards)
         })
         .then(() => {
           // check in components beforeRouteUpdate
+          // 提取组件内 beforeRouteUpdate 守卫（复用组件的更新守卫）
           guards = extractComponentsGuards(
             updatingRecords,
             'beforeRouteUpdate',
@@ -688,6 +763,7 @@ export function createRouter(options: RouterOptions): Router {
               guards.push(guardToPromiseFn(guard, to, from))
             })
           }
+          // 插入并发导航校验（每轮守卫前必加）
           guards.push(canceledNavigationCheck)
 
           // run the queue of per route beforeEnter guards
@@ -707,6 +783,7 @@ export function createRouter(options: RouterOptions): Router {
               }
             }
           }
+          // 插入并发导航校验（每轮守卫前必加）
           guards.push(canceledNavigationCheck)
 
           // run the queue of per route beforeEnter guards
@@ -716,6 +793,7 @@ export function createRouter(options: RouterOptions): Router {
           // NOTE: at this point to.matched is normalized and does not contain any () => Promise<Component>
 
           // clear existing enterCallbacks, these are added by extractComponentsGuards
+          // 清空之前的 enterCallbacks（避免重复执行）
           to.matched.forEach(record => (record.enterCallbacks = {}))
 
           // check in-component beforeRouteEnter
@@ -726,6 +804,7 @@ export function createRouter(options: RouterOptions): Router {
             from,
             runWithContext
           )
+          // 插入并发导航校验（每轮守卫前必加）
           guards.push(canceledNavigationCheck)
 
           // run the queue of per route beforeEnter guards
@@ -784,18 +863,22 @@ export function createRouter(options: RouterOptions): Router {
     data?: HistoryState
   ): NavigationFailure | void {
     // a more recent navigation took place
+    // 校验导航是否被取消（并发导航冲突）
     const error = checkCanceledNavigation(toLocation, from)
     if (error) return error
 
     // only consider as push if it's not the first navigation
+    // 判断是否为首次导航
     const isFirstNavigation = from === START_LOCATION_NORMALIZED
     const state: Partial<HistoryState> | null = !isBrowser ? {} : history.state
 
     // change URL only if the user did a push/replace and if it's not the initial navigation because
     // it's just reflecting the url
+    // 仅在「主动 push 跳转」时更新 URL
     if (isPush) {
       // on the initial navigation, we want to reuse the scroll position from
       // history state if it exists
+      // replace 模式 或 首次导航 → 使用 replaceState 更新 URL
       if (replace || isFirstNavigation)
         routerHistory.replace(
           toLocation.fullPath,
@@ -806,14 +889,16 @@ export function createRouter(options: RouterOptions): Router {
             data
           )
         )
+      // 普通 push 跳转 → 使用 pushState 新增历史记录
       else routerHistory.push(toLocation.fullPath, data)
     }
 
     // accept current navigation
+    // 更新响应式的当前路由 → 触发组件重新渲染
     currentRoute.value = toLocation
-    handleScroll(toLocation, from, isPush, isFirstNavigation)
+    handleScroll(toLocation, from, isPush, isFirstNavigation) // 触发滚动
 
-    markAsReady()
+    markAsReady() // 标记就绪
   }
 
   let removeHistoryListener: undefined | null | (() => void)
@@ -1019,26 +1104,36 @@ export function createRouter(options: RouterOptions): Router {
 
   // Scroll behavior
   function handleScroll(
-    to: RouteLocationNormalizedLoaded,
-    from: RouteLocationNormalizedLoaded,
-    isPush: boolean,
-    isFirstNavigation: boolean
+    to: RouteLocationNormalizedLoaded, // 目标路由
+    from: RouteLocationNormalizedLoaded, // 来源路由
+    isPush: boolean, // 是否为 push 导航
+    isFirstNavigation: boolean // 是否是应用首次导航（如页面初始化时的路由）
   ): // the return is not meant to be used
   Promise<unknown> {
     const { scrollBehavior } = options
+    // 非浏览器环境（如SSR） 或 未配置 scrollBehavior → 直接返回成功 Promise
     if (!isBrowser || !scrollBehavior) return Promise.resolve()
 
+    // 计算初始滚动位置（scrollPosition）
     const scrollPosition: _ScrollPositionNormalized | null =
+      // 非 push 跳转（replace/后退）→ 读取保存的滚动位置
       (!isPush && getSavedScrollPosition(getScrollKey(to.fullPath, 0))) ||
+      // 首次导航 或 非 push 跳转 → 读取 history.state 中的滚动位置
       ((isFirstNavigation || !isPush) &&
         (history.state as HistoryState) &&
         history.state.scroll) ||
-      null
+      null // 其他情况 → 无滚动位置
 
-    return nextTick()
-      .then(() => scrollBehavior(to, from, scrollPosition))
-      .then(position => position && scrollToPosition(position))
-      .catch(err => triggerError(err, to, from))
+    // 等待 DOM 更新完成后再执行滚动（路由跳转后组件渲染需要时间，避免滚动到未渲染的元素）
+    return (
+      nextTick()
+        // 调用用户配置的 scrollBehavior，获取目标滚动位置
+        .then(() => scrollBehavior(to, from, scrollPosition))
+        // 若返回了滚动位置，执行实际的滚动操作
+        .then(position => position && scrollToPosition(position))
+        // 捕获滚动过程中的错误，触发全局错误处理
+        .catch(err => triggerError(err, to, from))
+    )
   }
 
   const go = (delta: number) => routerHistory.go(delta)
@@ -1153,6 +1248,8 @@ export function createRouter(options: RouterOptions): Router {
 
   // TODO: type this as NavigationGuardReturn or similar instead of any
   function runGuardQueue(guards: Lazy<any>[]): Promise<any> {
+    // Vue Router 的 beforeEach/beforeEnter/beforeResolve 等守卫会被收集为一个数组（guards），需要串行执行
+    // 只有前一个守卫通过（Promise resolve），才能执行下一个
     return guards.reduce(
       (promise, guard) => promise.then(() => runWithContext(guard)),
       Promise.resolve()
@@ -1161,3 +1258,19 @@ export function createRouter(options: RouterOptions): Router {
 
   return router as Router
 }
+
+/*
+  完整的导航解析流程
+    导航被触发。
+    在失活的组件里调用 beforeRouteLeave 守卫。
+    调用全局的 beforeEach 守卫。
+    在重用的组件里调用 beforeRouteUpdate 守卫(2.2+)。
+    在路由配置里调用 beforeEnter。
+    解析异步路由组件。
+    在被激活的组件里调用 beforeRouteEnter。
+    调用全局的 beforeResolve 守卫(2.5+)。
+    导航被确认。
+    调用全局的 afterEach 钩子。
+    触发 DOM 更新。
+    调用 beforeRouteEnter 守卫中传给 next 的回调函数，创建好的组件实例会作为回调函数的参数传入。
+ */

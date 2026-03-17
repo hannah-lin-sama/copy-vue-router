@@ -74,15 +74,22 @@ export interface ScrollBehaviorHandler<T> {
 }
 
 function getElementPosition(
-  el: Element,
-  offset: ScrollPositionCoordinates
+  el: Element, // 目标 DOM 元素
+  offset: ScrollPositionCoordinates // 偏移配置（top/left 偏移量 + 滚动行为）
 ): _ScrollPositionNormalized {
+  // window.scrollTo 接收的是「相对于文档的绝对坐标」
+  // element.getBoundingClientRect() 返回的是「相对于视口的相对坐标」
+
+  // 获取文档根元素（html）相对于视口的位置
   const docRect = document.documentElement.getBoundingClientRect()
+  // 获取目标元素相对于视口的位置
   const elRect = el.getBoundingClientRect()
 
   return {
-    behavior: offset.behavior,
+    behavior: offset.behavior, // 透传平滑滚动配置（如 'smooth'）
+    // 元素视口左坐标 - 文档视口左坐标 - 自定义左偏移 → 文档绝对左坐标
     left: elRect.left - docRect.left - (offset.left || 0),
+    // 元素视口上坐标 - 文档视口上坐标 - 自定义上偏移 → 文档绝对上坐标
     top: elRect.top - docRect.top - (offset.top || 0),
   }
 }
@@ -95,6 +102,7 @@ export const computeScrollPosition = (): _ScrollPositionNormalized => ({
 export function scrollToPosition(position: ScrollPosition): void {
   let scrollToOptions: ScrollPositionCoordinates
 
+  // 元素锚点型（包含 el 字段）
   if ('el' in position) {
     const positionEl = position.el
     const isIdSelector =
@@ -121,9 +129,11 @@ export function scrollToPosition(position: ScrollPosition): void {
      * - Practical example: https://mathiasbynens.be/demo/html5-id
      */
     if (__DEV__ && typeof position.el === 'string') {
+      // 场景1：是 ID 选择器但对应元素不存在，或不是 ID 选择器
       if (!isIdSelector || !document.getElementById(position.el.slice(1))) {
         try {
           const foundEl = document.querySelector(position.el)
+          // 场景1.1：是 ID 选择器但通过 querySelector 找到了元素 → 警告（建议用 getElementById）
           if (isIdSelector && foundEl) {
             warn(
               `The selector "${position.el}" should be passed as "el: document.querySelector('${position.el}')" because it starts with "#".`
@@ -132,6 +142,7 @@ export function scrollToPosition(position: ScrollPosition): void {
             return
           }
         } catch (err) {
+          // 场景1.2：选择器语法错误 → 警告（提示转义字符）
           warn(
             `The selector "${position.el}" is invalid. If you are using an id selector, make sure to escape it. You can find more information about escaping characters in selectors at https://mathiasbynens.be/notes/css-escapes or use CSS.escape (https://developer.mozilla.org/en-US/docs/Web/API/CSS/escape).`
           )
@@ -141,13 +152,15 @@ export function scrollToPosition(position: ScrollPosition): void {
       }
     }
 
+    // 查找目标 DOM 元素
     const el =
       typeof positionEl === 'string'
         ? isIdSelector
-          ? document.getElementById(positionEl.slice(1))
-          : document.querySelector(positionEl)
-        : positionEl
+          ? document.getElementById(positionEl.slice(1)) // ID 选择器：直接用 getElementById
+          : document.querySelector(positionEl) // 其他选择器：用 querySelector
+        : positionEl // 非字符串：直接使用传入的 HTMLElement
 
+    // 元素不存在 → 开发环境警告并返回
     if (!el) {
       __DEV__ &&
         warn(
@@ -155,13 +168,20 @@ export function scrollToPosition(position: ScrollPosition): void {
         )
       return
     }
+    // 计算元素的滚动坐标
     scrollToOptions = getElementPosition(el, position)
+
+    // 坐标型（直接使用）
   } else {
     scrollToOptions = position
   }
 
+  // 浏览器支持平滑滚动（scrollBehavior API）
+  // 判断浏览器是否支持 window.scrollTo 的配置项（如 { behavior: 'smooth' }）
   if ('scrollBehavior' in document.documentElement.style)
     window.scrollTo(scrollToOptions)
+
+  // 不支持平滑滚动 → 降级使用基础 scrollTo
   else {
     window.scrollTo(
       scrollToOptions.left != null ? scrollToOptions.left : window.scrollX,

@@ -28,6 +28,7 @@ export interface NavigationGuardWithThis<T> {
     /**
      * @deprecated Return a value from the guard instead of calling `next(value)`.
      * The callback will be removed in a future version of Vue Router.
+     * 未来版本将移除对 `next(value)` 的调用，建议直接返回值。
      */
     next: NavigationGuardNext // 导航守卫回调函数
   ): _Awaitable<NavigationGuardReturn>

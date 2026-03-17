@@ -59,9 +59,11 @@ const ENC_SPACE_RE = /%20/g // }
  * @returns encoded string
  */
 export function commonEncode(text: string | number | null | undefined): string {
+  // 标准 encodeURI 行为：会将 | 编码为 %7C、[ 编码为 %5B、] 编码为 %5D
   return text == null
     ? ''
-    : encodeURI('' + text)
+    : encodeURI('' + text) // 编码
+        // 还原 | / [ / ] 为原始字符
         .replace(ENC_PIPE_RE, '|')
         .replace(ENC_BRACKET_OPEN_RE, '[')
         .replace(ENC_BRACKET_CLOSE_RE, ']')
@@ -118,6 +120,10 @@ export function encodeQueryKey(text: string | number): string {
  * @returns encoded string
  */
 export function encodePath(text: string | number | null | undefined): string {
+  // 标准 encodeURI 不会编码 # 和 ?（这两个是 URL 保留字符）
+
+  // commonEncode 先执行通用编码（空值处理、基础编码、还原 |/[/]）
+  // 额外编码 # → %23、? → %3F
   return commonEncode(text).replace(HASH_RE, '%23').replace(IM_RE, '%3F')
 }
 
@@ -131,6 +137,8 @@ export function encodePath(text: string | number | null | undefined): string {
  * @returns encoded string
  */
 export function encodeParam(text: string | number | null | undefined): string {
+  // 先执行路径编码（处理空值、#/? 编码、|/[/] 还原）
+  // 额外编码 / → %2F
   return encodePath(text).replace(SLASH_RE, '%2F')
 }
 

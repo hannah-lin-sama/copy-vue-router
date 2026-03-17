@@ -34,6 +34,7 @@ export interface RouteRecordNormalized {
 
   /**
    * Contains the original modules for lazy loaded components.
+   * 懒加载组件的原始模块
    * @internal
    */
   mods: Record<string, unknown>
@@ -68,7 +69,7 @@ export interface RouteRecordNormalized {
   updateGuards: Set<NavigationGuard>
   /**
    * Registered beforeRouteEnter callbacks passed to `next` or returned in guards
-   *
+   * 存储 beforeRouteEnter 中 next(vm => {}) 或返回的实例回调，组件挂载后执行
    * @internal
    */
   enterCallbacks: Record<string, NavigationGuardNextCallback[]>

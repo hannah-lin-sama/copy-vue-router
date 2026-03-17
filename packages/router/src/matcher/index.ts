@@ -31,7 +31,7 @@ import type { RouteRecordNameGeneric, _RouteRecordProps } from '../typed-routes'
 export interface RouterMatcher {
   // 路由注册
   addRoute: (record: RouteRecordRaw, parent?: RouteRecordMatcher) => () => void
-  // 路由注销
+  // 移除路由
   removeRoute(matcher: RouteRecordMatcher): void
   removeRoute(name: NonNullable<RouteRecordNameGeneric>): void
   // 路由批量清理
@@ -75,6 +75,7 @@ export function createRouterMatcher(
     NonNullable<RouteRecordNameGeneric>,
     RouteRecordMatcher
   >()
+  // 合并全局选项与默认选项，确保所有选项都有默认值
   globalOptions = mergeOptions<PathParserOptions>(
     // 合并全局选项与默认选项，确保所有选项都有默认值
     PATH_PARSER_OPTIONS_DEFAULTS,
@@ -105,7 +106,6 @@ export function createRouterMatcher(
       checkChildMissingNameWithEmptyPath(mainNormalizedRecord, parent)
     }
     // we might be the child of an alias
-    // 标记当前路由是否为某个路由的别名
     mainNormalizedRecord.aliasOf = originalRecord && originalRecord.record
 
     const options: PathParserOptions = mergeOptions(globalOptions, record)
@@ -117,15 +117,12 @@ export function createRouterMatcher(
     if ('alias' in record) {
       const aliases =
         typeof record.alias === 'string' ? [record.alias] : record.alias!
-      // 若路由配置了 alias（别名），将「原始路由 + 所有别名」转换为多个标准化路由记录，存入 normalizedRecords 数组
+
       for (const alias of aliases) {
         normalizedRecords.push(
-          // we need to normalize again to ensure the `mods` property
-          // being non enumerable
+          // 为每个别名创建规范化记录，确保路径、参数等信息一致
           normalizeRouteRecord(
             assign({}, mainNormalizedRecord, {
-              // this allows us to hold a copy of the `components` option
-              // so that async components cache is hold on the original record
               components: originalRecord
                 ? originalRecord.record.components
                 : mainNormalizedRecord.components,
@@ -135,8 +132,6 @@ export function createRouterMatcher(
               aliasOf: originalRecord
                 ? originalRecord.record
                 : mainNormalizedRecord,
-              // the aliases are always of the same kind as the original since they
-              // are defined on the same record
             })
           )
         )
@@ -149,9 +144,6 @@ export function createRouterMatcher(
     // 处理所有规范化记录（原始路由 + 别名路由）
     for (const normalizedRecord of normalizedRecords) {
       const { path } = normalizedRecord
-      // Build up the path for nested routes if the child isn't an absolute
-      // route. Only add the / delimiter if the child path isn't empty and if the
-      // parent path doesn't have a trailing slash
       // 嵌套路由拼接路径
       // 仅当「存在父路由（parent）」且「当前路径不是绝对路径（不以 / 开头）」时拼接
       if (parent && path[0] !== '/') {
@@ -416,7 +408,7 @@ export function createRouterMatcher(
   }
 
   // add initial routes
-  // 初始化传入的路由配置
+  // 初始化传入的路由配置，调用addRoute注册每个路由
   routes.forEach(route => addRoute(route))
 
   function clearRoutes() {

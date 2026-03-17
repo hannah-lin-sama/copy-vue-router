@@ -327,10 +327,10 @@ export type RouteLocationAsPath<Name extends keyof RouteMap = keyof RouteMap> =
 export type RouteLocationRaw<Name extends keyof RouteMap = keyof RouteMap> =
   RouteMapGeneric extends RouteMap
     ?
-        | RouteLocationAsString
-        | RouteLocationAsRelativeGeneric
-        | RouteLocationAsPathGeneric
-    :
+        | RouteLocationAsString // 字符串路径（如 "/home"）
+        | RouteLocationAsRelativeGeneric // 命名路由泛型对象（如 { name: 'Home' }）
+        | RouteLocationAsPathGeneric // 路径对象泛型（如 { path: '/home' }）
+    : // 强类型约束（开启 TS 强校验）
         | _LiteralUnion<RouteLocationAsStringTypedList<RouteMap>[Name], string>
         | RouteLocationAsRelativeTypedList<RouteMap>[Name]
         | RouteLocationAsPathTypedList<RouteMap>[Name]

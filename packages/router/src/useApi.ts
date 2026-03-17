@@ -9,6 +9,8 @@ import { RouteLocationNormalizedLoaded } from './typed-routes'
  * templates.
  */
 export function useRouter(): Router {
+  // const routerKey = Symbol(__DEV__ ? 'router' : '') as InjectionKey<Router>
+  // 注入 router 实例
   return inject(routerKey)!
 }
 
@@ -19,6 +21,12 @@ export function useRouter(): Router {
 export function useRoute<Name extends keyof RouteMap = keyof RouteMap>(
   _name?: Name
 ) {
+  /*
+  const routeLocationKey = Symbol(
+    __DEV__ ? 'route location' : ''
+  ) as InjectionKey<RouteLocationNormalizedLoaded>
+   */
+  // 注入 route
   return inject(routeLocationKey) as RouteLocationNormalizedLoaded<
     Name | RouteMap[Name]['childrenNames']
   >

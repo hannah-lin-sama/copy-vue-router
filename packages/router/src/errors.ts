@@ -39,17 +39,17 @@ export enum NavigationFailureType {
    * An aborted navigation is a navigation that failed because a navigation
    * guard returned `false` or called `next(false)`
    */
-  aborted = ErrorTypes.NAVIGATION_ABORTED,
+  aborted = ErrorTypes.NAVIGATION_ABORTED, // 导航被守卫终止
   /**
    * A cancelled navigation is a navigation that failed because a more recent
    * navigation finished started (not necessarily finished).
    */
-  cancelled = ErrorTypes.NAVIGATION_CANCELLED,
+  cancelled = ErrorTypes.NAVIGATION_CANCELLED, // 导航被更近期的导航取消
   /**
    * A duplicated navigation is a navigation that failed because it was
    * initiated while already being at the exact same location.
    */
-  duplicated = ErrorTypes.NAVIGATION_DUPLICATED,
+  duplicated = ErrorTypes.NAVIGATION_DUPLICATED, // 导航因重复跳转失败
 }
 
 /**

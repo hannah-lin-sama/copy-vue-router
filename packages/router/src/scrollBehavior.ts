@@ -95,8 +95,8 @@ function getElementPosition(
 }
 
 export const computeScrollPosition = (): _ScrollPositionNormalized => ({
-  left: window.scrollX,
-  top: window.scrollY,
+  left: window.scrollX, // 当前窗口水平滚动位置
+  top: window.scrollY, // 当前窗口垂直滚动位置
 })
 
 export function scrollToPosition(position: ScrollPosition): void {
@@ -192,11 +192,14 @@ export function scrollToPosition(position: ScrollPosition): void {
 
 export function getScrollKey(path: string, delta: number): string {
   const position: number = history.state ? history.state.position - delta : -1
+  // 生成唯一 key：结合「历史记录的位置索引」+「路由路径」，避免冲突
   return position + path
 }
 
+// 存储已保存的滚动位置（key: 滚动位置键，value: 滚动位置坐标）
 export const scrollPositions = new Map<string, _ScrollPositionNormalized>()
 
+// 保存滚动位置
 export function saveScrollPosition(
   key: string,
   scrollPosition: _ScrollPositionNormalized
@@ -205,9 +208,10 @@ export function saveScrollPosition(
 }
 
 export function getSavedScrollPosition(key: string) {
+  // 获取滚动位置
   const scroll = scrollPositions.get(key)
   // consume it so it's not used again
-  scrollPositions.delete(key)
+  scrollPositions.delete(key) // 删除已使用的滚动位置，避免重复使用
   return scroll
 }
 

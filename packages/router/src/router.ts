@@ -420,6 +420,7 @@ export function createRouter(options: RouterOptions): Router {
     from: RouteLocationNormalized
   ): NavigationFailure | void {
     // 全局挂起的路由 ≠ 当前待完成的路由
+    // 说明有新的导航请求，当前导航应被取消
     if (pendingLocation !== to) {
       // 创建并返回「导航取消」类型的失败错误
       return createRouterError<NavigationFailure>(
@@ -578,13 +579,13 @@ export function createRouter(options: RouterOptions): Router {
 
     // 有失败则返回 resolved 的 failure，否则调用 navigate 执行真正的导航
     return (failure ? Promise.resolve(failure) : navigate(toLocation, from))
+
       .catch((error: NavigationFailure | NavigationRedirectError) =>
         isNavigationFailure(error)
           ? // navigation redirects still mark the router as ready
-            // 导航守卫重定向 → 仅返回错误，不标记 ready
             isNavigationFailure(error, ErrorTypes.NAVIGATION_GUARD_REDIRECT)
-            ? error
-            : // 其他导航失败 → 标记 router 为 ready 并返回错误
+            ? error // 导航守卫重定向 → 仅返回错误
+            : // 其他导航失败
               markAsReady(error) // also returns the error
           : // reject any unknown error
             // 未知错误 → 触发全局错误并抛出
@@ -671,6 +672,7 @@ export function createRouter(options: RouterOptions): Router {
     from: RouteLocationNormalized
   ): Promise<void> {
     const error = checkCanceledNavigation(to, from)
+    // 若有取消导航错误 → 拒绝 Promise 并返回错误
     return error ? Promise.reject(error) : Promise.resolve()
   }
 
@@ -821,10 +823,11 @@ export function createRouter(options: RouterOptions): Router {
           return runGuardQueue(guards)
         })
         // catch any navigation canceled
-        .catch(err =>
-          isNavigationFailure(err, ErrorTypes.NAVIGATION_CANCELLED)
-            ? err
-            : Promise.reject(err)
+        .catch(
+          err =>
+            isNavigationFailure(err, ErrorTypes.NAVIGATION_CANCELLED)
+              ? err // 错误会被捕获并作为导航结果返回
+              : Promise.reject(err) // 继续抛出，确保错误能够被上层捕获
         )
     )
   }
@@ -909,20 +912,27 @@ export function createRouter(options: RouterOptions): Router {
    */
   function setupListeners() {
     // avoid setting up listeners twice due to an invalid first navigation
+    // 防重复注册监听
     if (removeHistoryListener) return
+
+    // 注册历史监听
     removeHistoryListener = routerHistory.listen((to, _from, info) => {
+      // 路由未处于监听状态，直接返回
       if (!router.listening) return
       // cannot be a redirect route because it was in history
+      // 解析目标路由为标准化格式
       const toLocation = resolve(to) as RouteLocationNormalized
 
       // due to dynamic routing, and to hash history with manual navigation
       // (manually changing the url or calling history.hash = '#/somewhere'),
       // there could be a redirect record in history
+      // 处理历史记录中可能存在的重定向
       const shouldRedirect = handleRedirectRecord(
         toLocation,
         router.currentRoute.value
       )
       if (shouldRedirect) {
+        // 触发重定向导航（replace 模式，强制执行）
         pushWithRedirect(
           assign(shouldRedirect, { replace: true, force: true }),
           toLocation
@@ -934,6 +944,7 @@ export function createRouter(options: RouterOptions): Router {
       const from = currentRoute.value
 
       // TODO: should be moved to web history?
+      // 浏览器环境下，保存当前路由的滚动位置
       if (isBrowser) {
         saveScrollPosition(
           getScrollKey(from.fullPath, info.delta),
@@ -943,6 +954,7 @@ export function createRouter(options: RouterOptions): Router {
 
       navigate(toLocation, from)
         .catch((error: NavigationFailure | NavigationRedirectError) => {
+          // 场景1：导航被中止/取消（如守卫返回 false）→ 直接返回错误，不处理
           if (
             isNavigationFailure(
               error,
@@ -951,6 +963,8 @@ export function createRouter(options: RouterOptions): Router {
           ) {
             return error
           }
+
+          // 场景2：导航守卫重定向
           if (
             isNavigationFailure(error, ErrorTypes.NAVIGATION_GUARD_REDIRECT)
           ) {
@@ -964,6 +978,7 @@ export function createRouter(options: RouterOptions): Router {
 
             // the error is already handled by router.push we just want to avoid
             // logging the error
+            // 触发重定向导航
             pushWithRedirect(
               assign(locationAsObject((error as NavigationRedirectError).to), {
                 force: true,
@@ -975,6 +990,7 @@ export function createRouter(options: RouterOptions): Router {
                 // manual change in hash history #916 ending up in the URL not
                 // changing, but it was changed by the manual url change, so we
                 // need to manually change it ourselves
+                // 特殊场景：hash 模式手动修改 URL 导致导航失败，手动回滚历史
                 if (
                   isNavigationFailure(
                     failure,
@@ -992,13 +1008,16 @@ export function createRouter(options: RouterOptions): Router {
             return Promise.reject()
           }
           // do not restore history on unknown direction
+          // 场景3：未知方向的错误 → 回滚历史记录（恢复到导航前的 URL）
           if (info.delta) {
             routerHistory.go(-info.delta, false)
           }
           // unrecognized error, transfer to the global handler
+          // 场景4：未识别的错误 → 触发全局错误处理
           return triggerError(error, toLocation, from)
         })
         .then((failure: NavigationFailure | void) => {
+          // 完成导航收尾（更新路由状态、触发组件挂载等）
           failure =
             failure ||
             finalizeNavigation(
@@ -1010,6 +1029,7 @@ export function createRouter(options: RouterOptions): Router {
 
           // revert the navigation
           if (failure) {
+            // 有历史偏移量且非取消类失败 → 回滚 delta 步
             if (
               info.delta &&
               // a new navigation has been triggered, so we do not want to revert, that will change the current history
@@ -1017,6 +1037,8 @@ export function createRouter(options: RouterOptions): Router {
               !isNavigationFailure(failure, ErrorTypes.NAVIGATION_CANCELLED)
             ) {
               routerHistory.go(-info.delta, false)
+
+              // pop 类型导航且中止/重复 → 手动回滚 1 步（修复 hash 模式手动改 URL 问题）
             } else if (
               info.type === NavigationType.pop &&
               isNavigationFailure(
@@ -1030,6 +1052,7 @@ export function createRouter(options: RouterOptions): Router {
             }
           }
 
+          // 触发全局 afterEach 钩子
           triggerAfterEach(
             toLocation as RouteLocationNormalizedLoaded,
             from,
@@ -1043,9 +1066,11 @@ export function createRouter(options: RouterOptions): Router {
 
   // Initialization and Errors
 
+  // 等待就绪的回调队列（存储 [resolve, reject] 元组）
   let readyHandlers = useCallbacks<_OnReadyCallback>()
+  // 全局错误监听器队列（存储错误处理函数）
   let errorListeners = useCallbacks<_ErrorListener>()
-  let ready: boolean
+  let ready: boolean // 路由系统是否已就绪
 
   /**
    * Trigger errorListeners added via onError and throws the error as well
@@ -1075,8 +1100,10 @@ export function createRouter(options: RouterOptions): Router {
   }
 
   function isReady(): Promise<void> {
+    // 快速返回：若路由已就绪且完成首次导航 → 直接返回成功 Promise
     if (ready && currentRoute.value !== START_LOCATION_NORMALIZED)
       return Promise.resolve()
+    // 等待就绪：若路由未就绪，将回调加入队列
     return new Promise((resolve, reject) => {
       readyHandlers.add([resolve, reject])
     })
@@ -1089,15 +1116,26 @@ export function createRouter(options: RouterOptions): Router {
    */
   function markAsReady<E = any>(err: E): E
   function markAsReady<E = any>(): void
+  /**
+   * 标记路由系统是否完成初始化 / 就绪，并触发所有等待就绪状态的回调（成功 / 失败）
+   * @param err
+   * @returns
+   */
   function markAsReady<E = any>(err?: E): E | void {
+    // 仅首次调用生效（保证就绪状态只标记一次）
     if (!ready) {
       // still not ready if an error happened
-      ready = !err
+      ready = !err // 更新就绪状态：无错误则就绪
+
+      // 就绪后初始化事件监听器
       setupListeners()
+
+      // 遍历所有等待就绪的回调
       readyHandlers
         .list()
         .forEach(([resolve, reject]) => (err ? reject(err) : resolve()))
-      readyHandlers.reset()
+
+      readyHandlers.reset() // 清空回调队列
     }
     return err
   }
